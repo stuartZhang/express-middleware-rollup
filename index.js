@@ -15,7 +15,8 @@ const logger = {
   build: debug('express-rollup-mw:build'),
   res: debug('express-rollup-mw:res')
 };
-const extRegex = /\.js$/;
+const AVAIL_METHODS = ['GET', 'HEAD'];
+const EXT_REGEX = /\.js$/;
 const defaults = {
   mode: 'compile',
   bundleExtension: '.bundle',
@@ -38,6 +39,13 @@ class ExpressRollup {
   static getBundleDependencies(bundle) {
     return bundle.modules.map(module => module.id).filter(path.isAbsolute);
   }
+  static async errHandleWrapper(func, req, res, next){
+    try {
+      await func(req, res, next);
+    } catch (err) {
+      next(err);
+    }
+  }
   static get [Symbol.species]() {
     return this;
   }
@@ -48,64 +56,103 @@ class ExpressRollup {
     this.lastTimeStamp = Date.now();
     this[Symbol.toStringTag] = 'ExpressRollup';
   }
-  handle(req, res, next) {
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      return next();
+  async checkNeedsRebuild(bundleOpts, rollupOpts) {
+    const [entryExists, jsExists] = await Promise.all([
+      fsp.access(rollupOpts.entry, fsp.F_OK).then(() => true, err => false),
+      fsp.access(bundleOpts.dest, fsp.F_OK).then(() => true, err => false)
+    ]);
+    if (!entryExists) {
+      return null;
     }
-    let {pathname} = url.parse(req.url);
-    if (this.opts.prefix && pathname.indexOf(this.opts.prefix) === 0) {
-      pathname = pathname.substring(this.opts.prefix.length);
+    logger.check('source: %s', rollupOpts.entry);
+    logger.check('dest: %s', bundleOpts.dest);
+    if (!this.cache.hasOwnProperty(bundleOpts.dest) || !jsExists) {
+      logger.check('Cache miss');
+      if (jsExists) { // 刷新内存缓存清单
+        const bundle = await rollup.rollup(rollupOpts);
+        logger.check('Bundle loaded');
+        const dependencies = ExpressRollup.getBundleDependencies(bundle);
+        this.cache[bundleOpts.dest] = dependencies;
+        const needed = await this.allFilesOlder(bundleOpts.dest, dependencies);
+        return {
+          needed: !needed,
+          bundle
+        };
+      } // it does not exist, so we MUST rebuild (allFilesOlder = false)
+      return {needed: true};
     }
-    if (!extRegex.test(pathname)) {
-      return next();
-    }
-    const rollupOpts = _.defaults({
-      entry: path.join(this.opts.root, this.opts.src, pathname
-        .replace(new RegExp(`^${this.opts.dest}`), '')
-        .replace(extRegex, this.opts.bundleExtension))
-    }, this.opts.rollupOpts);
-    const bundleOpts = _.defaults({
-      dest: path.join(this.opts.root, this.opts.dest,
-        pathname.replace(new RegExp(`^${RegExp.quote(this.opts.dest)}`), ''))
-    }, this.opts.bundleOpts);
-    this.checkNeedsRebuild(bundleOpts, rollupOpts).then((rebuild) => {
-      if (rebuild == null) {
-        return next();
-      }
-      logger.check('Needs rebuild: %s', rebuild.needed);
-      if (rebuild.needed) {
-        logger.build('Rolling up started');
-        // checkNeedsRebuild may need to inspect the bundle, so re-use the
-        // one already available instead of creating a new one
-        if (rebuild.bundle) {
-          this.processBundle(rebuild.bundle, bundleOpts, res, next);
-        } else {
-          rollup.rollup(rollupOpts).then((bundle) => {
-            this.processBundle(bundle, bundleOpts, res, next);
-          }, (err) => {
-            console.error(err);
-          });
+    const allOlder = await this.allFilesOlder(bundleOpts.dest, this.cache[bundleOpts.dest]);
+    return {needed: !allOlder};
+  }
+  handles(){
+    return [
+      async (req, res, next) => {
+        if (!AVAIL_METHODS.includes(req.method)) {
+          return next('route');
         }
-        return true;
-      } else if (this.opts.serve === true) {
-        /** serves js code from cache by ourselves */
-        res.status(200)
-          .type(this.opts.type)
-          .set('Cache-Control', `max-age=${this.opts.maxAge}`)
-          .sendFile(bundleOpts.dest, (err) => {
-            if (err) {
-              console.error(err);
-              res.status(err.status).end();
-            } else {
-              logger.res('Serving ourselves');
-            }
-          });
-        return true;
+        let {pathname} = url.parse(req.url);
+        if (!EXT_REGEX.test(pathname)) {
+          return next('route');
+        }
+        if (this.opts.prefix && pathname.startsWith(this.opts.prefix)) {
+          pathname = pathname.substring(this.opts.prefix.length);
+        }
+        const rollupOpts = _.defaults({
+          entry: path.join(this.opts.root, this.opts.src, pathname
+            .replace(new RegExp(`^${this.opts.dest}`), '')
+            .replace(EXT_REGEX, this.opts.bundleExtension))
+        }, this.opts.rollupOpts);
+        const bundleOpts = _.defaults({
+          dest: path.join(this.opts.root, this.opts.dest,
+            pathname.replace(new RegExp(`^${RegExp.quote(this.opts.dest)}`), ''))
+        }, this.opts.bundleOpts);
+        const rebuild = await this.checkNeedsRebuild(bundleOpts, rollupOpts);
+        if (rebuild == null) {
+          return next('route');
+        }
+        switch (this.opts.rebuild) {
+        case 'always':
+          rebuild.needed = true;
+          break;
+        case 'never':
+          rebuild.needed = false;
+          break;
+        }
+        _.extendOwn(res.locals, {rollupOpts, bundleOpts, rebuild})
+        return next();
+      },
+      async (req, res, next) => {
+        const {bundleOpts, rollupOpts, rebuild} = res.locals;
+        logger.check('Needs rebuild: %s', rebuild.needed);
+        if (rebuild.needed) {
+          logger.build('Rolling up started');
+          // checkNeedsRebuild may need to inspect the bundle, so re-use the
+          // one already available instead of creating a new one
+          if (rebuild.bundle) {
+            this.processBundle(rebuild.bundle, bundleOpts, res, next);
+          } else {
+            const bundle = await rollup.rollup(rollupOpts);
+            this.processBundle(bundle, bundleOpts, res, next);
+          }
+        } else if (this.opts.serve === true) {
+          /** serves js code from cache by ourselves */
+          res.status(200)
+            .type(this.opts.type)
+            .set('Cache-Control', `max-age=${this.opts.maxAge}`)
+            .sendFile(bundleOpts.dest, err => {
+              if (err) {
+                console.error(err);
+                res.status(err.status).end();
+              } else {
+                logger.res('Serving ourselves');
+              }
+            });
+        } else {
+          logger.res('Serving', 'by next()');
+          return next();
+        }
       }
-      logger.res('Serving', 'by next()');
-      return next();
-    }, console.error);
-    return true;
+    ].map(func => _.wrap(func, ExpressRollup.errHandleWrapper));
   }
   processBundle(bundle, bundleOpts, res, next) {
     // after loading the bundle, we first want to make sure the dependency
@@ -183,35 +230,6 @@ class ExpressRollup {
       throw err;
     });
   }
-  async checkNeedsRebuild(bundleOpts, rollupOpts) {
-    const [entryExists, jsExists] = await Promise.all([
-      fsp.access(rollupOpts.entry, fsp.F_OK).then(() => true, err => false),
-      fsp.access(bundleOpts.dest, fsp.F_OK).then(() => true, err => false)
-    ]);
-    if (!entryExists) {
-      return null;
-    }
-    logger.check('source: %s', rollupOpts.entry);
-    logger.check('dest: %s', bundleOpts.dest);
-    if (this.opts.rebuild !== 'never' &&
-        (!this.cache.hasOwnProperty(bundleOpts.dest) || !jsExists || this.opts.rebuild === 'always')) {
-      logger.check(this.opts.rebuild === 'always' ? 'Always rebuild' : 'Cache miss');
-      if (jsExists) { // 刷新内存缓存清单
-        const bundle = await rollup.rollup(rollupOpts);
-        logger.check('Bundle loaded');
-        const dependencies = ExpressRollup.getBundleDependencies(bundle);
-        this.cache[bundleOpts.dest] = dependencies;
-        const needed = await this.allFilesOlder(bundleOpts.dest, dependencies);
-        return {
-          needed: !needed,
-          bundle
-        };
-      } // it does not exist, so we MUST rebuild (allFilesOlder = false)
-      return {needed: true};
-    }
-    const allOlder = await this.allFilesOlder(bundleOpts.dest, this.cache[bundleOpts.dest]);
-    return {needed: !allOlder};
-  }
 }
 
 module.exports = function createExpressRollup(options) {
@@ -239,5 +257,5 @@ module.exports = function createExpressRollup(options) {
   opts.dest = opts.dest || opts.src;
   //
   const expressRollup = new ExpressRollup(opts);
-  return expressRollup.handle.bind(expressRollup);
+  return expressRollup.handles();
 };
