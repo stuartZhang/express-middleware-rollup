@@ -8,6 +8,7 @@ const rollup = require('rollup');
 const fsp = require('fs-promise');
 const url = require('url');
 const path = require('path');
+const express = require('express');
 _.defaults(RegExp, {quote: require("regexp-quote")});
 
 const logger = {
@@ -90,7 +91,7 @@ class ExpressRollup {
         if (!AVAIL_METHODS.includes(req.method)) {
           return next('route');
         }
-        let {pathname} = url.parse(req.url);
+        let {pathname} = url.parse(req.originalUrl);
         if (!EXT_REGEX.test(pathname)) {
           return next('route');
         }
@@ -225,8 +226,7 @@ class ExpressRollup {
     });
   }
 }
-
-module.exports = function createExpressRollup(options) {
+function buildOpts(options){
   const opts = Object.assign({}, defaults);
   if (options.mode === 'polyfill' || (!options.mode && defaults.mode === 'polyfill')) {
     if (options.dest || options.serve || options.bundleExtension) {
@@ -249,7 +249,11 @@ module.exports = function createExpressRollup(options) {
   console.assert(opts.src, 'rollup middleware requires src directory.');
   // Destination directory (source by default)
   opts.dest = opts.dest || opts.src;
-  //
-  const expressRollup = new ExpressRollup(opts);
-  return expressRollup.handles();
+  return opts;
+}
+module.exports = function createExpressRollup(options) {
+  const router = express.Router();
+  const expressRollup = new ExpressRollup(buildOpts(options));
+  router.get('*.js', ...expressRollup.handles());
+  return router;
 };
