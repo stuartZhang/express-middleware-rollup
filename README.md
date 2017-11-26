@@ -31,7 +31,9 @@ const path    = require('path');
 
 const app = express();
 app.use(rollup({
-  src: 'client/js',
+  destExtension: /-es5\.js$/,
+  bundleExtension: '.bjs',
+  src: 'client/js',  
   dest: 'static',
   root: __dirname,
   prefix: '/js'
@@ -39,7 +41,7 @@ app.use(rollup({
 app.use(express.static(path.join(__dirname, 'static')));
 app.listen(3000);
 ```
-Now, if you request `localhost:3000/main.js`, the middleware will automatically bundle `client/js/main.bundle` using rollup into a file that is ready to be served by `express.static` middleware.
+Now, if you request `localhost:3000/main-es5.js`, the middleware will automatically bundle `client/js/main.bjs` using rollup into a file that is ready to be served by `express.static` middleware.
 You can see this in action by looking into the [basic example](examples/basic)
 
 ## Alternative Usage Scenarios
@@ -68,6 +70,7 @@ Options which are available in both modes are:
 
 ## Options `compile` Mode
 * `dest`: (String, default: value of `src`)
+* `destExtension`: (RegExp, default: /\.js$/)
 * `bundleExtension`: (String, default: `'.bundle'`)
 * `serve`: (Bool|String, default: `false`). Can be `true`, `false` or `'on-compile'`. 
   `'on-compile'` has the benefit that the bundle which is already in memory will be written directly into the response
