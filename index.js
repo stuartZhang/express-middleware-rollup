@@ -1,7 +1,15 @@
 'use strict';
 
+const debug = require('debug');
 const rollup  = require('rollup');
 const fsp     = require('fs-promise');
+
+const logger = {
+  prepare: debug('express-rollup-mw:prepare'),
+  check: debug('express-rollup-mw:check'),
+  build: debug('express-rollup-mw:build'),
+  res: debug('express-rollup-mw:res')
+};
 
 let fecha     = null;
 try {
@@ -12,13 +20,7 @@ const url     = require('url');
 const path    = require('path');
 const dirname = require('path').dirname;
 const join    = require('path').join;
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(`\x07\x1B[31m${message}\x1B[91m`);
-  }
-}
-
+const extRegex = /\.js$/;
 const defaults = {
   mode: 'compile',
   bundleExtension: '.bundle',
@@ -40,65 +42,42 @@ const defaults = {
 class ExpressRollup {
   constructor(opts) {
     this.opts = opts;
-
     // Cache for bundles' dependencies list
     this.cache = {};
     this.lastTimeStamp = Date.now();
   }
-  log(key, val) {
-    if (this.opts.debug) {
-      let time = '';
-      let diff = '';
-      if (fecha !== null) {
-        const now = new Date();
-        time = `${fecha.format(now, 'hh:mm:ss')} `;
-        diff = `+${fecha.format(now.getTime() - this.lastTimeStamp, 'ss.SSS')} `;
-        this.lastTimeStamp = now;
-      }
-      if (!val) {
-        console.error('\x1B[33m%s\x1B[34m%s\x1B[36m%s\x1B[0m', diff, time, key);
-      } else {
-        console.error('\x1B[33m%s\x1B[34m%s\x1B[90m%s: \x1B[36m%s\x1B[0m', diff, time, key, val);
-      }
-    }
-  }
-
   handle(req, res, next) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return next();
     }
-
     const opts = this.opts;
     const src = opts.src;
     const dest = opts.dest;
     const root = opts.root;
     const rollupOpts = Object.assign({}, opts.rollupOpts);
     const bundleOpts = Object.assign({}, opts.bundleOpts);
-    const extRegex = /\.js$/;
 
     let pathname = url.parse(req.url).pathname;
     if (opts.prefix && pathname.indexOf(opts.prefix) === 0) {
       pathname = pathname.substring(opts.prefix.length);
     }
-
     if (!extRegex.test(pathname)) {
       return next();
     }
-
     const jsPath = join(root, dest, pathname.replace(new RegExp(`^${dest}`), ''));
     const bundlePath = join(root, src, pathname
           .replace(new RegExp(`^${dest}`), '')
           .replace(extRegex, opts.bundleExtension));
 
-    this.log('source', bundlePath);
-    this.log('dest', jsPath);
+    logger.prepare('source: %s', bundlePath);
+    logger.prepare('dest: %s', jsPath);
 
     rollupOpts.entry = bundlePath;
     bundleOpts.dest = jsPath;
     this.checkNeedsRebuild(jsPath, rollupOpts).then((rebuild) => {
+      logger.check('Needs rebuild: %s', rebuild.needed);
       if (rebuild.needed) {
-        this.log('Needs rebuild', 'true');
-        this.log('Rolling up', 'started');
+        logger.build('Rolling up started');
         // checkNeedsRebuild may need to inspect the bundle, so re-use the
         // one already available instead of creating a new one
         if (rebuild.bundle) {
@@ -121,11 +100,12 @@ class ExpressRollup {
               console.error(err);
               res.status(err.status).end();
             } else {
-              this.log('Serving', 'ourselves');
+              logger.res('Serving ourselves');
             }
           });
         return true;
       }
+      logger.res('Serving', 'by next()');
       return next();
     }, (err) => {
       console.error(err);
@@ -138,24 +118,24 @@ class ExpressRollup {
     // cache is up-to-date
     this.cache[bundleOpts.dest] = ExpressRollup.getBundleDependencies(bundle);
     const bundled = bundle.generate(bundleOpts);
-    this.log('Rolling up', 'finished');
+    logger.build('Rolling up finished');
     const writePromise = this.writeBundle(bundled, bundleOpts);
-    this.log('Writing out', 'started');
+    logger.build('Writing out started');
     if (opts.serve === true || opts.serve === 'on-compile') {
       /** serves js code by ourselves */
-      this.log('Serving', 'ourselves');
+      logger.res('Serving ourselves');
       res.status(200)
         .type(opts.type)
         .set('Cache-Control', `max-age=${opts.maxAge}`)
         .send(bundled.code);
     } else {
       writePromise.then(() => {
-        this.log('Serving', 'by next()');
+        logger.res('Serving', 'by next()');
         next();
       } /* Error case for this is handled below */);
     }
     writePromise.then(() => {
-      this.log('Writing out', 'finished');
+      logger.build('Writing out', 'finished');
     }, (err) => {
       console.error(err);
       // Hope, that maybe another middleware can handle things
@@ -173,7 +153,7 @@ class ExpressRollup {
     return dirExists.then(() => {
       let {code, map} = bundle;
       if (map && sourceMap) {
-        this.log(`${sourceMap} sourceMap for ${dest}`);
+        logger.build(`${sourceMap} sourceMap for ${dest}`);
         if (sourceMap === 'inline') {
           code += '\n//# sourceMappingURL=' + map.toUrl();
         } else {
@@ -194,15 +174,15 @@ class ExpressRollup {
       .map(f => fsp.stat(f).then(stat => stat, () => false));
     return Promise.all(statsPromises).then((stats) => {
       const fileStat = stats[0];
-      assert(fileStat, 'File tested for allFilesOlder does not exist?');
-      this.log('Stats loaded', `${stats.length - 1} dependencies`);
+      console.assert(fileStat, 'File tested for allFilesOlder does not exist?');
+      logger.check('Stats loaded', `${stats.length - 1} dependencies`);
       for (let i = 1; i < stats.length; i += 1) {
         // return false if a file does not exist (any more)
         if (stats[i] === false) {
           return false;
         }
         if (fileStat.mtime.valueOf() <= stats[i].mtime.valueOf()) {
-          this.log('File is newer', files[i - 1]);
+          logger.check('File is newer', files[i - 1]);
           return false;
         }
       }
@@ -218,10 +198,10 @@ class ExpressRollup {
       return false;
     });
     if (this.opts.rebuild !== 'never' && (!this.cache.hasOwnProperty(jsPath) || this.opts.rebuild === 'always')) {
-      this.log(this.opts.rebuild === 'always' ? 'Always rebuild' : 'Cache miss');
+      logger.check(this.opts.rebuild === 'always' ? 'Always rebuild' : 'Cache miss');
       if (jsExists) {
         const bundle = await rollup.rollup(rollupOpts);
-        this.log('Bundle loaded');
+        logger.check('Bundle loaded');
         const dependencies = ExpressRollup.getBundleDependencies(bundle);
         this.cache[jsPath] = dependencies;
         const needed = await this.allFilesOlder(jsPath, dependencies);
@@ -262,7 +242,7 @@ module.exports = function createExpressRollup(options) {
   Object.assign(opts.bundleOpts, options.bundleOpts);
 
   // Source directory (required)
-  assert(opts.src, 'rollup middleware requires src directory.');
+  console.assert(opts.src, 'rollup middleware requires src directory.');
   // Destination directory (source by default)
   opts.dest = opts.dest || opts.src;
 
