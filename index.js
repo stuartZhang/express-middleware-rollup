@@ -212,38 +212,28 @@ class ExpressRollup {
     });
   }
 
-  checkNeedsRebuild(jsPath, rollupOpts) {
-    const testExists = fsp.access(jsPath, fsp.F_OK);
-    if (this.opts.rebuild !== 'never' && (!this.cache[jsPath] || this.opts.rebuild === 'always')) {
-      if (this.opts.rebuild === 'always') {
-        this.log('Always rebuild');
-      } else {
-        this.log('Cache miss');
-      }
-      return testExists
-      .then(() => ({ exists: true, bundle: rollup.rollup(rollupOpts) }), () => ({ exists: false }))
-      .then((res) => {
-        if (res.exists === false) {
-          // it does not exist, so we MUST rebuild (allFilesOlder = false)
-          return Promise.all([false, false]);
-        }
-        return res.bundle.then((bundle) => {
-          this.log('Bundle loaded');
-          const dependencies = ExpressRollup.getBundleDependencies(bundle);
-          this.cache[jsPath] = dependencies;
-          return Promise.all([this.allFilesOlder(jsPath, dependencies), bundle]);
-        }, (err) => { throw err; });
-      })
-      .then(results => ({ needed: !results[0], bundle: results[1] }))
-      .catch((err) => {
-        console.error(err);
-      });
-    }
-    return testExists
-    .then(() => this.allFilesOlder(jsPath, this.cache[jsPath]))
-    .then(allOlder => ({ needed: !allOlder }), (err) => {
-      console.error(err);
+  async checkNeedsRebuild(jsPath, rollupOpts) {
+    const jsExists = await fsp.access(jsPath, fsp.F_OK).then(() => true, err => {
+      Reflect.deleteProperty(this.cache, jsPath);
+      return false;
     });
+    if (this.opts.rebuild !== 'never' && (!this.cache.hasOwnProperty(jsPath) || this.opts.rebuild === 'always')) {
+      this.log(this.opts.rebuild === 'always' ? 'Always rebuild' : 'Cache miss');
+      if (jsExists) {
+        const bundle = await rollup.rollup(rollupOpts).bundle;
+        this.log('Bundle loaded');
+        const dependencies = ExpressRollup.getBundleDependencies(bundle);
+        this.cache[jsPath] = dependencies;
+        const needed = await this.allFilesOlder(jsPath, dependencies);
+        return {
+          needed: !needed,
+          bundle
+        };
+      } // it does not exist, so we MUST rebuild (allFilesOlder = false)
+      return {needed: true};
+    }
+    const allOlder = await this.allFilesOlder(jsPath, this.cache[jsPath]);
+    return {needed: !allOlder};
   }
 
   static getBundleDependencies(bundle) {
