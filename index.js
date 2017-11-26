@@ -139,7 +139,7 @@ class ExpressRollup {
     this.cache[bundleOpts.dest] = ExpressRollup.getBundleDependencies(bundle);
     const bundled = bundle.generate(bundleOpts);
     this.log('Rolling up', 'finished');
-    const writePromise = ExpressRollup.writeBundle(bundled, bundleOpts.dest);
+    const writePromise = this.writeBundle(bundled, bundleOpts);
     this.log('Writing out', 'started');
     if (opts.serve === true || opts.serve === 'on-compile') {
       /** serves js code by ourselves */
@@ -163,7 +163,7 @@ class ExpressRollup {
     });
   }
 
-  static writeBundle(bundle, dest) {
+  writeBundle(bundle, {dest, sourceMap}) {
     const dirExists = fsp.stat(dirname(dest))
       .catch(() => Promise.reject('Directory to write to does not exist'))
       .then(stats => (!stats.isDirectory()
@@ -171,9 +171,18 @@ class ExpressRollup {
         : Promise.resolve()));
 
     return dirExists.then(() => {
-      let promise = fsp.writeFile(dest, bundle.code);
-      if (bundle.map) {
-        const mapPromise = fsp.writeFile(`${dest}.map`, bundle.map);
+      let {code, map} = bundle;
+      if (map && sourceMap) {
+        this.log(`${sourceMap} sourceMap for ${dest}`);
+        if (sourceMap === 'inline') {
+          code += '\n//# sourceMappingURL=' + map.toUrl();
+        } else {
+          code += '\n//# sourceMappingURL=' + path.basename(path.basename(`${dest}.map`));
+        }
+      }
+      let promise = fsp.writeFile(dest, code);
+      if (map && sourceMap === true) {
+        const mapPromise = fsp.writeFile(`${dest}.map`, map);
         promise = Promise.all([promise, mapPromise]);
       }
       return promise;
@@ -205,9 +214,12 @@ class ExpressRollup {
 
   checkNeedsRebuild(jsPath, rollupOpts) {
     const testExists = fsp.access(jsPath, fsp.F_OK);
-    const cache = this.cache;
-    if (!cache[jsPath]) {
-      this.log('Cache miss');
+    if (this.opts.rebuild !== 'never' && (!this.cache[jsPath] || this.opts.rebuild === 'always')) {
+      if (this.opts.rebuild === 'always') {
+        this.log('Always rebuild');
+      } else {
+        this.log('Cache miss');
+      }
       return testExists
       .then(() => ({ exists: true, bundle: rollup.rollup(rollupOpts) }), () => ({ exists: false }))
       .then((res) => {
@@ -218,7 +230,7 @@ class ExpressRollup {
         return res.bundle.then((bundle) => {
           this.log('Bundle loaded');
           const dependencies = ExpressRollup.getBundleDependencies(bundle);
-          cache[jsPath] = dependencies;
+          this.cache[jsPath] = dependencies;
           return Promise.all([this.allFilesOlder(jsPath, dependencies), bundle]);
         }, (err) => { throw err; });
       })
@@ -228,7 +240,7 @@ class ExpressRollup {
       });
     }
     return testExists
-    .then(() => this.allFilesOlder(jsPath, cache[jsPath]))
+    .then(() => this.allFilesOlder(jsPath, this.cache[jsPath]))
     .then(allOlder => ({ needed: !allOlder }), (err) => {
       console.error(err);
     });

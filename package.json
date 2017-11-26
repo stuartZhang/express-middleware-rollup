@@ -11,26 +11,26 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/suluke/express-middleware-rollup.git"
+    "url": "https://github.com/stuartZhang/express-middleware-rollup.git"
   },
-  "bugs": "https://github.com/suluke/express-middleware-rollup/issues",
-  "homepage": "https://github.com/suluke/express-middleware-rollup",
+  "bugs": "https://github.com/stuartZhang/express-middleware-rollup/issues",
+  "homepage": "https://github.com/stuartZhang/express-middleware-rollup",
   "keywords": [
     "connect",
     "express",
     "middleware",
     "rollup"
   ],
-  "author": "Lukas Böhm",
+  "author": "Stuart Zhang",
   "license": "MIT",
   "licenses": [
     {
       "type": "MIT",
-      "url": "https://github.com/suluke/express-middleware-rollup/blob/master/LICENSE"
+      "url": "https://github.com/stuartZhang/express-middleware-rollup/blob/master/LICENSE"
     }
   ],
   "engines": {
-    "node": ">=5.10.1"
+    "node": ">=8.9.0"
   },
   "dependencies": {
     "fs-promise": "^1.0.0",
