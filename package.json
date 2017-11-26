@@ -35,7 +35,9 @@
   "dependencies": {
     "debug": "^3.1.0",
     "fs-promise": "^1.0.0",
-    "rollup": "^0.41.1"
+    "regexp-quote": "0.0.0",
+    "rollup": "^0.41.1",
+    "underscore": "^1.8.3"
   },
   "optionalDependencies": {
     "fecha": "^2.3.0"
