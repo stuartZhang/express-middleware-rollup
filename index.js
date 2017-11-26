@@ -32,7 +32,6 @@ const defaults = {
   type: 'javascript',
   rollupOpts: {},
   bundleOpts: { format: 'iife' },
-  debug: false,
   maxAge: 0
 };
 
