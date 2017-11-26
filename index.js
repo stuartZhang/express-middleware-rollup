@@ -13,7 +13,8 @@ _.defaults(RegExp, {quote: require("regexp-quote")});
 const logger = {
   check: debug('express-rollup-mw:check'),
   build: debug('express-rollup-mw:build'),
-  res: debug('express-rollup-mw:res')
+  res: debug('express-rollup-mw:res'),
+  rollup: debug('express-rollup-mw:rollup')
 };
 const AVAIL_METHODS = ['GET', 'HEAD'];
 const defaults = {
@@ -29,7 +30,13 @@ const defaults = {
                 // that the bundle which is already in memory will be
                 // written directly into the response
   type: 'javascript',
-  rollupOpts: {},
+  rollupOpts: {
+    onwarn(err){
+      if (err.code !== 'THIS_IS_UNDEFINED') {
+        logger.rollup(err);
+      }
+    }
+  },
   bundleOpts: { format: 'iife' },
   maxAge: 0
 };
