@@ -17,9 +17,9 @@ const logger = {
   res: debug('express-rollup-mw:res')
 };
 const AVAIL_METHODS = ['GET', 'HEAD'];
-const EXT_REGEX = /\.js$/;
 const defaults = {
   mode: 'compile',
+  destExtension: /\.js$/,
   bundleExtension: '.bundle',
   src: null,
   dest: null,
@@ -92,7 +92,7 @@ class ExpressRollup {
           return next('route');
         }
         let {pathname} = url.parse(req.originalUrl);
-        if (!EXT_REGEX.test(pathname)) {
+        if (!this.opts.destExtension.test(pathname)) {
           return next('route');
         }
         if (this.opts.prefix && pathname.startsWith(this.opts.prefix)) {
@@ -101,7 +101,7 @@ class ExpressRollup {
         const rollupOpts = _.defaults({
           entry: path.join(this.opts.root, this.opts.src, pathname
             .replace(new RegExp(`^${this.opts.dest}`), '')
-            .replace(EXT_REGEX, this.opts.bundleExtension))
+            .replace(this.opts.destExtension, this.opts.bundleExtension))
         }, this.opts.rollupOpts);
         const bundleOpts = _.defaults({
           dest: path.join(this.opts.root, this.opts.dest,
@@ -227,24 +227,24 @@ class ExpressRollup {
   }
 }
 function buildOpts(options){
-  const opts = Object.assign({}, defaults);
+  const opts = _.extendOwn({}, defaults);
   if (options.mode === 'polyfill' || (!options.mode && defaults.mode === 'polyfill')) {
     if (options.dest || options.serve || options.bundleExtension) {
       console.warn('Explicitly setting options of compile mode in polyfill mode');
     }
     // some default values will be different if mode === 'polyfill'
-    Object.assign(opts, {
+    _.extendOwn(opts, {
       serve: true,
       bundleExtension: '.js',
       dest: options.cache || options.dest || 'cache'
     });
   }
-  Object.assign(opts, options);
+  _.extendOwn(opts, options);
   // We're not fancy enough to use recursive option merging (yet), so...
-  opts.rollupOpts = Object.assign({}, defaults.rollupOpts);
-  Object.assign(opts.rollupOpts, options.rollupOpts);
-  opts.bundleOpts = Object.assign({}, defaults.bundleOpts);
-  Object.assign(opts.bundleOpts, options.bundleOpts);
+  opts.rollupOpts = _.extendOwn({}, defaults.rollupOpts);
+  _.extendOwn(opts.rollupOpts, options.rollupOpts);
+  opts.bundleOpts = _.extendOwn({}, defaults.bundleOpts);
+  _.extendOwn(opts.bundleOpts, options.bundleOpts);
   // Source directory (required)
   console.assert(opts.src, 'rollup middleware requires src directory.');
   // Destination directory (source by default)
@@ -252,8 +252,9 @@ function buildOpts(options){
   return opts;
 }
 module.exports = function createExpressRollup(options) {
+  const opts = buildOpts(options);
   const router = express.Router();
-  const expressRollup = new ExpressRollup(buildOpts(options));
-  router.get('*.js', ...expressRollup.handles());
+  const expressRollup = new ExpressRollup(opts);
+  router.get(opts.destExtension, ...expressRollup.handles());
   return router;
 };
