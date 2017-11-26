@@ -1,4 +1,3 @@
-
 try {
   require('fecha');
 } catch (e) {}
@@ -177,30 +176,26 @@ class ExpressRollup {
       next('route');
     }
   }
-  writeBundle(bundle, {dest, sourceMap}) {
-    const dirExists = fsp.stat(path.dirname(dest))
-      .catch(() => Promise.reject('Directory to write to does not exist'))
-      .then(stats => (!stats.isDirectory()
-        ? Promise.reject('Directory to write to does not exist (not a directory)')
-        : Promise.resolve()));
-
-    return dirExists.then(() => {
-      let {code, map} = bundle;
-      if (map && sourceMap) {
-        logger.build(`${sourceMap} sourceMap for ${dest}`);
-        if (sourceMap === 'inline') {
-          code += '\n//# sourceMappingURL=' + map.toUrl();
-        } else {
-          code += '\n//# sourceMappingURL=' + path.basename(path.basename(`${dest}.map`));
-        }
+  async writeBundle({code, map}, {dest, sourceMap}) {
+    const stats = await fsp.stat(path.dirname(dest)).catch(err => null);
+    if (stats == null) {
+      await fsp.mkdir(path.dirname(dest));
+    } else if (!stats.isDirectory()) {
+      throw new Error('Directory to write to does not exist (not a directory)');
+    }
+    if (map && sourceMap) {
+      logger.build(`${sourceMap} sourceMap for ${dest}`);
+      if (sourceMap === 'inline') {
+        code += '\n//# sourceMappingURL=' + map.toUrl();
+      } else {
+        code += '\n//# sourceMappingURL=' + path.basename(path.basename(`${dest}.map`));
       }
-      let promise = fsp.writeFile(dest, code);
-      if (map && sourceMap === true) {
-        const mapPromise = fsp.writeFile(`${dest}.map`, map);
-        promise = Promise.all([promise, mapPromise]);
-      }
-      return promise;
-    }, (err) => { throw err; });
+    }
+    const promises = [fsp.writeFile(dest, code)];
+    if (map && sourceMap === true) {
+      promises.push(fsp.writeFile(`${dest}.map`, map))
+    }
+    await Promise.all(promises);
   }
   allFilesOlder(file, files) {
     const statsPromises = [file].concat(files)
