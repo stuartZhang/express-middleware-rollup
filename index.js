@@ -220,7 +220,7 @@ class ExpressRollup {
     if (this.opts.rebuild !== 'never' && (!this.cache.hasOwnProperty(jsPath) || this.opts.rebuild === 'always')) {
       this.log(this.opts.rebuild === 'always' ? 'Always rebuild' : 'Cache miss');
       if (jsExists) {
-        const bundle = await rollup.rollup(rollupOpts).bundle;
+        const bundle = await rollup.rollup(rollupOpts);
         this.log('Bundle loaded');
         const dependencies = ExpressRollup.getBundleDependencies(bundle);
         this.cache[jsPath] = dependencies;
