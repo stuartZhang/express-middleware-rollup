@@ -11,7 +11,6 @@ const path = require('path');
 _.defaults(RegExp, {quote: require("regexp-quote")});
 
 const logger = {
-  prepare: debug('express-rollup-mw:prepare'),
   check: debug('express-rollup-mw:check'),
   build: debug('express-rollup-mw:build'),
   res: debug('express-rollup-mw:res')
@@ -36,11 +35,18 @@ const defaults = {
 };
 
 class ExpressRollup {
+  static getBundleDependencies(bundle) {
+    return bundle.modules.map(module => module.id).filter(path.isAbsolute);
+  }
+  static get [Symbol.species]() {
+    return this;
+  }
   constructor(opts) {
     this.opts = opts;
     // Cache for bundles' dependencies list
     this.cache = {};
     this.lastTimeStamp = Date.now();
+    this[Symbol.toStringTag] = 'ExpressRollup';
   }
   handle(req, res, next) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -62,11 +68,10 @@ class ExpressRollup {
       dest: path.join(this.opts.root, this.opts.dest,
         pathname.replace(new RegExp(`^${RegExp.quote(this.opts.dest)}`), ''))
     }, this.opts.bundleOpts);
-
-    logger.prepare('source: %s', rollupOpts.entry);
-    logger.prepare('dest: %s', bundleOpts.dest);
-
-    this.checkNeedsRebuild(bundleOpts.dest, rollupOpts).then((rebuild) => {
+    this.checkNeedsRebuild(bundleOpts, rollupOpts).then((rebuild) => {
+      if (rebuild == null) {
+        return next();
+      }
       logger.check('Needs rebuild: %s', rebuild.needed);
       if (rebuild.needed) {
         logger.build('Rolling up started');
@@ -99,12 +104,9 @@ class ExpressRollup {
       }
       logger.res('Serving', 'by next()');
       return next();
-    }, (err) => {
-      console.error(err);
-    });
+    }, console.error);
     return true;
   }
-
   processBundle(bundle, bundleOpts, res, next) {
     // after loading the bundle, we first want to make sure the dependency
     // cache is up-to-date
@@ -134,7 +136,6 @@ class ExpressRollup {
       next();
     });
   }
-
   writeBundle(bundle, {dest, sourceMap}) {
     const dirExists = fsp.stat(path.dirname(dest))
       .catch(() => Promise.reject('Directory to write to does not exist'))
@@ -160,7 +161,6 @@ class ExpressRollup {
       return promise;
     }, (err) => { throw err; });
   }
-
   allFilesOlder(file, files) {
     const statsPromises = [file].concat(files)
       .map(f => fsp.stat(f).then(stat => stat, () => false));
@@ -183,20 +183,25 @@ class ExpressRollup {
       throw err;
     });
   }
-
-  async checkNeedsRebuild(jsPath, rollupOpts) {
-    const jsExists = await fsp.access(jsPath, fsp.F_OK).then(() => true, err => {
-      Reflect.deleteProperty(this.cache, jsPath);
-      return false;
-    });
-    if (this.opts.rebuild !== 'never' && (!this.cache.hasOwnProperty(jsPath) || this.opts.rebuild === 'always')) {
+  async checkNeedsRebuild(bundleOpts, rollupOpts) {
+    const [entryExists, jsExists] = await Promise.all([
+      fsp.access(rollupOpts.entry, fsp.F_OK).then(() => true, err => false),
+      fsp.access(bundleOpts.dest, fsp.F_OK).then(() => true, err => false)
+    ]);
+    if (!entryExists) {
+      return null;
+    }
+    logger.check('source: %s', rollupOpts.entry);
+    logger.check('dest: %s', bundleOpts.dest);
+    if (this.opts.rebuild !== 'never' &&
+        (!this.cache.hasOwnProperty(bundleOpts.dest) || !jsExists || this.opts.rebuild === 'always')) {
       logger.check(this.opts.rebuild === 'always' ? 'Always rebuild' : 'Cache miss');
-      if (jsExists) {
+      if (jsExists) { // 刷新内存缓存清单
         const bundle = await rollup.rollup(rollupOpts);
         logger.check('Bundle loaded');
         const dependencies = ExpressRollup.getBundleDependencies(bundle);
-        this.cache[jsPath] = dependencies;
-        const needed = await this.allFilesOlder(jsPath, dependencies);
+        this.cache[bundleOpts.dest] = dependencies;
+        const needed = await this.allFilesOlder(bundleOpts.dest, dependencies);
         return {
           needed: !needed,
           bundle
@@ -204,12 +209,8 @@ class ExpressRollup {
       } // it does not exist, so we MUST rebuild (allFilesOlder = false)
       return {needed: true};
     }
-    const allOlder = await this.allFilesOlder(jsPath, this.cache[jsPath]);
+    const allOlder = await this.allFilesOlder(bundleOpts.dest, this.cache[bundleOpts.dest]);
     return {needed: !allOlder};
-  }
-
-  static getBundleDependencies(bundle) {
-    return bundle.modules.map(module => module.id).filter(path.isAbsolute);
   }
 }
 
@@ -232,14 +233,11 @@ module.exports = function createExpressRollup(options) {
   Object.assign(opts.rollupOpts, options.rollupOpts);
   opts.bundleOpts = Object.assign({}, defaults.bundleOpts);
   Object.assign(opts.bundleOpts, options.bundleOpts);
-
   // Source directory (required)
   console.assert(opts.src, 'rollup middleware requires src directory.');
   // Destination directory (source by default)
   opts.dest = opts.dest || opts.src;
-
+  //
   const expressRollup = new ExpressRollup(opts);
-  // eslint-disable-next-line prefer-rest-params, prefer-spread
-  function middleware() { expressRollup.handle.apply(expressRollup, arguments); }
-  return middleware;
+  return expressRollup.handle.bind(expressRollup);
 };
