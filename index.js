@@ -129,10 +129,10 @@ class ExpressRollup {
           // checkNeedsRebuild may need to inspect the bundle, so re-use the
           // one already available instead of creating a new one
           if (rebuild.bundle) {
-            this.processBundle(rebuild.bundle, bundleOpts, res, next);
+            await this.processBundle(rebuild.bundle, bundleOpts, res, next);
           } else {
             const bundle = await rollup.rollup(rollupOpts);
-            this.processBundle(bundle, bundleOpts, res, next);
+            await this.processBundle(bundle, bundleOpts, res, next);
           }
         } else if (this.opts.serve === true) {
           /** serves js code from cache by ourselves */
@@ -149,39 +149,33 @@ class ExpressRollup {
             });
         } else {
           logger.res('Serving', 'by next()');
-          return next();
+          next('route');
         }
       }
     ].map(func => _.wrap(func, ExpressRollup.errHandleWrapper));
   }
-  processBundle(bundle, bundleOpts, res, next) {
+  async processBundle(bundle, bundleOpts, res, next) {
     // after loading the bundle, we first want to make sure the dependency
     // cache is up-to-date
     this.cache[bundleOpts.dest] = ExpressRollup.getBundleDependencies(bundle);
     const bundled = bundle.generate(bundleOpts);
     logger.build('Rolling up finished');
-    const writePromise = this.writeBundle(bundled, bundleOpts);
-    logger.build('Writing out started');
+    let isSent = false;
     if (this.opts.serve === true || this.opts.serve === 'on-compile') {
-      /** serves js code by ourselves */
+      isSent = true; // serves js code by ourselves
       logger.res('Serving ourselves');
       res.status(200)
         .type(this.opts.type)
         .set('Cache-Control', `max-age=${this.opts.maxAge}`)
         .send(bundled.code);
-    } else {
-      writePromise.then(() => {
-        logger.res('Serving', 'by next()');
-        next();
-      } /* Error case for this is handled below */);
     }
-    writePromise.then(() => {
-      logger.build('Writing out', 'finished');
-    }, (err) => {
-      console.error(err);
-      // Hope, that maybe another middleware can handle things
-      next();
-    });
+    logger.build('Writing out started');
+    await this.writeBundle(bundled, bundleOpts);
+    logger.build('Writing out', 'finished');
+    if (!isSent) {
+      logger.res('Serving', 'by next()');
+      next('route');
+    }
   }
   writeBundle(bundle, {dest, sourceMap}) {
     const dirExists = fsp.stat(path.dirname(dest))
