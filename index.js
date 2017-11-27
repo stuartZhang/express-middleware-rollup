@@ -226,6 +226,11 @@ class ExpressRollup {
       throw err;
     });
   }
+  guardHandle(req, res, next){
+    const err = new Error('Not Found');
+    err.status = 404;
+    next(err);
+  }
 }
 function buildOpts(options){
   const opts = _.extendOwn({}, defaults);
@@ -256,6 +261,7 @@ module.exports = function createExpressRollup(options) {
   const opts = buildOpts(options);
   const router = express.Router();
   const expressRollup = new ExpressRollup(opts);
-  router.get(opts.destExtension, ...expressRollup.handles());
+  router.get(`*${opts.bundleExtension}`, expressRollup.guardHandle.bind(expressRollup))
+        .get(opts.destExtension, ...expressRollup.handles());
   return router;
 };
