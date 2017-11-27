@@ -72,7 +72,7 @@ class ExpressRollup {
     }
     logger.check('source: %s', rollupOpts.entry);
     logger.check('dest: %s', bundleOpts.dest);
-    if (!this.cache.hasOwnProperty(bundleOpts.dest) || !jsExists) {
+    if (!this.cache.hasOwnProperty(bundleOpts.dest) || !jsExists) { //TODO: 一个promise需要被用来做点位符，而不是空着cache，以避免data race。
       logger.check('Cache miss');
       if (jsExists) { // 刷新内存缓存清单
         const bundle = await rollup.rollup(rollupOpts);
