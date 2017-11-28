@@ -51,6 +51,11 @@ class ExpressRollup {
       next(err);
     }
   }
+  static guardHandle(req, res, next){
+    const err = new Error('Not Found');
+    err.status = 404;
+    next(err);
+  }
   static get [Symbol.species]() {
     return this;
   }
@@ -69,6 +74,14 @@ class ExpressRollup {
     }
   }
   async checkNeedsRebuild(bundleOpts, rollupOpts) {
+    if (process.env.NODE_ENV === 'production') {
+      if (this.cache.has(bundleOpts.dest)) {
+        await this.cache.get(bundleOpts.dest).promise;
+        return {needed: false};
+      }
+      this.refreshCache(bundleOpts.dest);
+      return {needed: true};
+    }
     const [entryExists, jsExists] = await Promise.all([
       fsp.access(rollupOpts.entry, fsp.F_OK).then(() => true, err => false),
       fsp.access(bundleOpts.dest, fsp.F_OK).then(() => true, err => false)
@@ -253,17 +266,12 @@ class ExpressRollup {
       throw err;
     });
   }
-  guardHandle(req, res, next){
-    const err = new Error('Not Found');
-    err.status = 404;
-    next(err);
-  }
 }
 module.exports = function createExpressRollup(options) {
   const opts = buildOpts(options);
   const router = express.Router();
   const expressRollup = new ExpressRollup(opts);
-  router.get(`*${opts.bundleExtension}`, expressRollup.guardHandle.bind(expressRollup))
+  router.get(`*${opts.bundleExtension}`, ExpressRollup.guardHandle)
         .get(opts.destExtension, ...expressRollup.handles());
   return router;
 };
