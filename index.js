@@ -213,13 +213,13 @@ class ExpressRollup {
     let bundled = bundle.generate(bundleOpts);
     logger.build('Rolling up finished');
     logger.build('Uglify started');
-    if (this.opts.uglifyOpts.sourceMap) {
-      this.opts.uglifyOpts.sourceMap = {
+    const uglifyOpts = _.defaults(bundleOpts.sourceMap ? {
+      sourceMap: {
         content: bundled.map,
         'filename': path.basename(bundleOpts.dest)
-      };
-    }
-    bundled = UglifyJS.minify(bundled.code, this.opts.uglifyOpts);
+      }
+    } : {}, this.opts.uglifyOpts);
+    bundled = UglifyJS.minify(bundled.code, uglifyOpts);
     if (bundled.error) {
       throw bundled.error;
     }
@@ -333,14 +333,6 @@ function buildOpts(options){
   console.assert(opts.src, 'rollup middleware requires src directory.');
   // Destination directory (source by default)
   opts.dest = opts.dest || opts.src;
-  //
-  if (opts.bundleOpts.sourceMap != null) { //TODO: 统一sourcemap配置到最顶层。
-    opts.rollupOpts.sourceMap = opts.uglifyOpts.sourceMap = !!opts.bundleOpts.sourceMap;
-  } else if (opts.rollupOpts.sourceMap != null) {
-    opts.bundleOpts.sourceMap = opts.uglifyOpts.sourceMap = !!opts.rollupOpts.sourceMap;
-  } else if (opts.uglifyOpts.sourceMap != null) {
-    opts.rollupOpts.sourceMap = opts.bundleOpts.sourceMap = !!opts.uglifyOpts.sourceMap;
-  }
   return opts;
 }
 function defer(){
