@@ -298,6 +298,12 @@ function buildOpts(options){
   console.assert(opts.src, 'rollup middleware requires src directory.');
   // Destination directory (source by default)
   opts.dest = opts.dest || opts.src;
+  //
+  if (opts.bundleOpts.sourceMap != null) {
+    opts.rollupOpts.sourceMap = !!opts.bundleOpts.sourceMap;
+  } else if (opts.rollupOpts.sourceMap != null) {
+    opts.bundleOpts.sourceMap = !!opts.rollupOpts.sourceMap;
+  }
   return opts;
 }
 function defer(){
