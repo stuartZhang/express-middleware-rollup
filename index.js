@@ -55,13 +55,13 @@ class ExpressRollup {
     return this;
   }
   constructor(opts) {
-    this.opts = opts;    
+    this.opts = opts;
     this.cache = new Map(); // Cache for bundles' dependencies list
     this[Symbol.toStringTag] = 'ExpressRollup';
   }
   refreshCache(jsPath, needed = true){
     if (needed) { // expired
-      if (this.cache.has(jsPath) && 
+      if (this.cache.has(jsPath) &&
           this.cache.get(jsPath).status === 'pending') {
         this.cache.get(jsPath).reject('expired');
       }
@@ -76,27 +76,28 @@ class ExpressRollup {
     if (!entryExists) {
       return null;
     }
-    logger.check('source: %s', rollupOpts.entry);
-    logger.check('dest: %s', bundleOpts.dest);
+    const relDest = path.relative(this.opts.root, bundleOpts.dest);
+    logger.check('source: %s', path.relative(this.opts.root, rollupOpts.entry));
+    logger.check('dest: %s', relDest);
     if (jsExists && this.cache.has(bundleOpts.dest)) { // both
-      logger.check(`[f+, c+] Check the cache item for ${bundleOpts.dest}`);
+      logger.check(`[f+, c+] Check the cache item for ${relDest}`);
       const dependencies = await this.cache.get(bundleOpts.dest).promise;
       const needed = !(await this.allFilesOlder(bundleOpts.dest, dependencies));
       this.refreshCache(bundleOpts.dest, needed);
       return {needed};
     }
     if (!jsExists && !this.cache.has(bundleOpts.dest)) { // neither
-      logger.check(`[f-, c-] Create a cache item for ${bundleOpts.dest}`);
+      logger.check(`[f-, c-] Create a cache item for ${relDest}`);
       this.refreshCache(bundleOpts.dest);
       return {needed: true};
     }
     if (jsExists && !this.cache.has(bundleOpts.dest)) {
-      logger.check(`[f+, c-] Create a cache item for the existing ${bundleOpts.dest}`);
+      logger.check(`[f+, c-] Create a cache item for the existing ${relDest}`);
       this.refreshCache(bundleOpts.dest);
       const bundle = await rollup.rollup(rollupOpts);
       const dependencies = ExpressRollup.getBundleDependencies(bundle);
       const needed = !(await this.allFilesOlder(bundleOpts.dest, dependencies));
-      if (needed) { // expired   
+      if (needed) { // expired
         return {needed, bundle};
       }
       this.cache.get(bundleOpts.dest).resolve(dependencies);
@@ -105,11 +106,11 @@ class ExpressRollup {
     if (!jsExists && this.cache.has(bundleOpts.dest)) {
       // js is absent but cache item is here.
       if (this.cache.get(bundleOpts.dest).status === 'pending') {
-        logger.check(`[f-, c+] Await the ${bundleOpts.dest} is built by other threads.`);
+        logger.check(`[f-, c+] Await the ${relDest} is built by other threads.`);
         await this.cache.get(bundleOpts.dest).promise;
         return {needed: false};
       } else {
-        logger.check(`[f-, c+] Invalid cache item, due to losing ${bundleOpts.dest}`);
+        logger.check(`[f-, c+] Invalid cache item, due to losing ${relDest}`);
         this.refreshCache(bundleOpts.dest);
         return {needed: true};
       }
@@ -243,7 +244,7 @@ class ExpressRollup {
           return false;
         }
         if (fileStat.mtime.valueOf() <= stats[i].mtime.valueOf()) {
-          logger.check('File is newer', files[i - 1]);
+          logger.check('File is newer', path.relative(this.opts.root, files[i - 1]));
           return false;
         }
       }
