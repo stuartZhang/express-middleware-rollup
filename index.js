@@ -41,6 +41,7 @@ const defaults = {
   bundleOpts: {
     format: 'iife'
   },
+  isUglify: true,
   uglifyOpts: {
     warnings: true,
     ie8: true
@@ -212,34 +213,36 @@ class ExpressRollup {
     // cache is up-to-date
     let bundled = bundle.generate(bundleOpts);
     logger.build('Rolling up finished');
-    logger.build('Uglify started');
-    const uglifyOpts = _.defaults(bundleOpts.sourceMap ? {
-      sourceMap: {
-        content: bundled.map,
-        'filename': path.basename(bundleOpts.dest)
+    if (this.opts.isUglify) {
+      logger.build('Uglify started');
+      const uglifyOpts = _.defaults(bundleOpts.sourceMap ? {
+        sourceMap: {
+          content: bundled.map,
+          'filename': path.basename(bundleOpts.dest)
+        }
+      } : {}, this.opts.uglifyOpts);
+      bundled = UglifyJS.minify(bundled.code, uglifyOpts);
+      if (bundled.error) {
+        throw bundled.error;
       }
-    } : {}, this.opts.uglifyOpts);
-    bundled = UglifyJS.minify(bundled.code, uglifyOpts);
-    if (bundled.error) {
-      throw bundled.error;
-    }
-    if (bundled.warnings) {
-      for (const warning of bundled.warnings) {
-        logger.build('uglify:', warning);
-      }
-    }
-    if (_.isString(bundled.map) && !_.isEmpty(bundled.map)) {
-      const {map} = bundled;
-      bundled.map = {
-        toString(){
-          return map;
-        },
-        toUrl(){
-          return `data:application/json;charset=utf-8;base64,${Buffer.from(map, 'utf-8').toString('base64')}`;
+      if (bundled.warnings) {
+        for (const warning of bundled.warnings) {
+          logger.build('uglify:', warning);
         }
       }
+      if (_.isString(bundled.map) && !_.isEmpty(bundled.map)) {
+        const {map} = bundled;
+        bundled.map = {
+          toString(){
+            return map;
+          },
+          toUrl(){
+            return `data:application/json;charset=utf-8;base64,${Buffer.from(map, 'utf-8').toString('base64')}`;
+          }
+        }
+      }
+      logger.build('Uglify finished');
     }
-    logger.build('Uglify finished');
     let isSent = false;
     if (this.opts.serve === true || this.opts.serve === 'on-compile') {
       isSent = true; // serves js code by ourselves
