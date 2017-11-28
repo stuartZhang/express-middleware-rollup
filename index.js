@@ -8,6 +8,7 @@ const fsp = require('fs-promise');
 const url = require('url');
 const path = require('path');
 const express = require('express');
+const UglifyJS = require("uglify-js");
 _.defaults(RegExp, {quote: require("regexp-quote")});
 
 const logger = {
@@ -37,7 +38,13 @@ const defaults = {
       }
     }
   },
-  bundleOpts: { format: 'iife' },
+  bundleOpts: {
+    format: 'iife'
+  },
+  uglifyOpts: {
+    warnings: true,
+    ie8: true
+  },
   maxAge: 0
 };
 class ExpressRollup {
@@ -203,8 +210,36 @@ class ExpressRollup {
   async processBundle(bundle, bundleOpts, res, next) {
     // after loading the bundle, we first want to make sure the dependency
     // cache is up-to-date
-    const bundled = bundle.generate(bundleOpts);
+    let bundled = bundle.generate(bundleOpts);
     logger.build('Rolling up finished');
+    logger.build('Uglify started');
+    if (this.opts.uglifyOpts.sourceMap) {
+      this.opts.uglifyOpts.sourceMap = {
+        content: bundled.map,
+        'filename': path.basename(bundleOpts.dest)
+      };
+    }
+    bundled = UglifyJS.minify(bundled.code, this.opts.uglifyOpts);
+    if (bundled.error) {
+      throw bundled.error;
+    }
+    if (bundled.warnings) {
+      for (const warning of bundled.warnings) {
+        logger.build('uglify:', warning);
+      }
+    }
+    if (_.isString(bundled.map) && !_.isEmpty(bundled.map)) {
+      const {map} = bundled;
+      bundled.map = {
+        toString(){
+          return map;
+        },
+        toUrl(){
+          return `data:application/json;charset=utf-8;base64,${Buffer.from(map, 'utf-8').toString('base64')}`;
+        }
+      }
+    }
+    logger.build('Uglify finished');
     let isSent = false;
     if (this.opts.serve === true || this.opts.serve === 'on-compile') {
       isSent = true; // serves js code by ourselves
@@ -235,7 +270,7 @@ class ExpressRollup {
       if (sourceMap === 'inline') {
         code += '\n//# sourceMappingURL=' + map.toUrl();
       } else {
-        code += '\n//# sourceMappingURL=' + path.basename(path.basename(`${dest}.map`));
+        code += '\n//# sourceMappingURL=' + path.basename(`${dest}.map`);
       }
     }
     const promises = [fsp.writeFile(dest, code)];
@@ -299,10 +334,12 @@ function buildOpts(options){
   // Destination directory (source by default)
   opts.dest = opts.dest || opts.src;
   //
-  if (opts.bundleOpts.sourceMap != null) {
-    opts.rollupOpts.sourceMap = !!opts.bundleOpts.sourceMap;
+  if (opts.bundleOpts.sourceMap != null) { //TODO: 统一sourcemap配置到最顶层。
+    opts.rollupOpts.sourceMap = opts.uglifyOpts.sourceMap = !!opts.bundleOpts.sourceMap;
   } else if (opts.rollupOpts.sourceMap != null) {
-    opts.bundleOpts.sourceMap = !!opts.rollupOpts.sourceMap;
+    opts.bundleOpts.sourceMap = opts.uglifyOpts.sourceMap = !!opts.rollupOpts.sourceMap;
+  } else if (opts.uglifyOpts.sourceMap != null) {
+    opts.rollupOpts.sourceMap = opts.bundleOpts.sourceMap = !!opts.uglifyOpts.sourceMap;
   }
   return opts;
 }
