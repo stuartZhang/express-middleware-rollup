@@ -218,7 +218,7 @@ class ExpressRollup {
       throw new Error('Directory to write to does not exist (not a directory)');
     }
     if (map && sourceMap) {
-      logger.build(`${sourceMap} sourceMap for ${dest}`);
+      logger.build(`${sourceMap} sourceMap for ${path.relative(this.opts.root, dest)}`);
       if (sourceMap === 'inline') {
         code += '\n//# sourceMappingURL=' + map.toUrl();
       } else {
