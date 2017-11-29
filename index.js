@@ -45,8 +45,7 @@ const defaults = {
   uglifyOpts: {
     warnings: true,
     ie8: true
-  },
-  maxAge: 0
+  }
 };
 class ExpressRollup {
   static getBundleDependencies(bundle) {
