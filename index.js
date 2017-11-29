@@ -9,6 +9,7 @@ const url = require('url');
 const path = require('path');
 const express = require('express');
 const UglifyJS = require("uglify-js");
+const babelPlugin = require('rollup-plugin-babel');
 _.defaults(RegExp, {quote: require("regexp-quote")});
 
 const logger = {
@@ -32,6 +33,10 @@ const defaults = {
                 // written directly into the response
   type: 'javascript',
   rollupOpts: {
+    plugins: [babelPlugin({ // .babelrc 自动装载
+      externalHelpers: true,
+      exclude: 'node_modules/**'
+    })],
     onwarn(err){
       if (err.code !== 'THIS_IS_UNDEFINED') {
         logger.rollup(err);
