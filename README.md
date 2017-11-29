@@ -10,18 +10,27 @@ Express middleware for [rollup](http://rollupjs.org/) + [Babel](https://babeljs.
 
 就[express-sass-middleware](https://github.com/shamsup/express-sass-middleware)的开箱即用，我直接拿来享用。鉴于[express-babelify-middleware](https://github.com/luisfarzati/express-babelify-middleware)的完善与强大，我曾经一度考虑放弃[rollup](http://rollupjs.org/)而转向[Browserify](https://github.com/browserify/browserify)的怀抱。但是，我不幸地被历史包袱拖累（例如，[自制Rollup-WebWorker打包插件](https://cnodejs.org/topic/5826f9acd3abab717d8b4be6)）。打包工具的“转型”决策真心地艰难。
 
-所以，我fork了[suluke](https://github.com/suluke)的[express-middleware-rollup](https://github.com/suluke/express-middleware-rollup)，努力构建一款更完善的“即时预编译器”。
+所以，我fork了[suluke](https://github.com/suluke)的[express-middleware-rollup](https://github.com/suluke/express-middleware-rollup)努力构建一款更完善的“基于缓存的即时预编译器”。
 
 ## Function and Mechanism
-简单地说，就是 预编译ES6/7的*.mjs文件为ES5的\*.js文件。但是，它即不是配置File Watch来实时地扫描硬盘检查文件修改，也不是从VSCode中利用Ctrl+Shift+B快捷键来手动触发预编译命令，而是模拟JSP编译为Servlet的工作原理：
-1. \*.mjs文件就被保存在[Express](https://expressjs.com/)的public目录下（类似于JSP被保存在J2EE的WebContent目录内），而不需要你做任何项目的事情。
+简单地说，就是 预编译ES6/7的*.mjs文件为ES5的\*.js文件。但是，它既不是配置File Watch来实时地扫描硬盘和检查文件更新，也不是从VSCode中利用Ctrl+Shift+B快捷键手动触发预编译行为，而是模拟JSP编译为Servlet的工作原理：
+1. \*.mjs文件被保存在[Express](https://expressjs.com/)的public目录下（类似于JSP被保存在J2EE的WebContent目录内），而不需要你做其它任何事情。
 1. 当入口\*.js文件被从浏览器**第一次**访问时，express-middleware-rollup中间件就会自动地
     1. 关联js背后的所有mjs文件
     1. 利用[Babel](https://babeljs.io/)编译mjs为js文件。
     1. 以iife格式（可配置改变的），打包js文件
     1. 甚至，混淆被打包后的js文件。（可配置关闭）
-    1. 最终，将编译+打包+混淆结果保存到硬盘上。
-1. 以后，当相同的入口js文件再次被浏览器下载执行时，Express Rollup中间件就直接返回硬盘上的保存结果。 
+    1. 最终，将编译+打包+混淆的输出结果保存到硬盘上。
+1. 以后，当该入口js文件再次被从浏览器下载执行时，Express Rollup中间件就会
+    1. 在开发模式下，
+        1. 检查入口js背后mjs文件是否有更新。
+        1. 若有更新，重新 编译+打包+混淆 mjs文件为js文件。 
+        1. 否则，直接返回硬盘上保存的上次build结果。
+    1. 在产品模式下，
+        1. 不检查关联mjs文件的更新，以缩短请求的处理时间。
+        1. 仅只检查常驻于内存中的，js->mjs缓存注册表。
+        1. 如果注册表内有条目对应于正在被请求的js文件时，直接从硬盘上读取内容并响应浏览器请求。
+        1. 否则，编译+打包+混淆 js文件对应的mjs文件。然后，保存build结果 并 返回内容给前端。
 
 express-middleware-rollup算是[express-babelify-middleware](https://github.com/luisfarzati/express-babelify-middleware)基于[rollup](http://rollupjs.org/)打包器的复刻版。它的工作原理也与后端模板引擎雷同。
 
@@ -66,12 +75,18 @@ Options which are available in both modes are:
 * `rebuild`: (String, default: `'deps-change'`). Strategy used to determine whether to re-run `rollup` if a compiled/cached bundle exists. Can be  `'deps-change'`, `'never'` or `'always'`
 * `rollupOpts`: (Object, default: `{}`). Options that will be passed to [`rollup.rollup`](https://github.com/rollup/rollup/wiki/JavaScript-API#rolluprollup-options-). `entry` is set by the plugin, though.
 * `bundleOpts`: (Object, default: `{ format: 'iife' }`). Options passed to [`bundle.generate`](https://github.com/rollup/rollup/wiki/JavaScript-API#bundlegenerate-options-)
-* `uglifyOpts` (Object, default: `{ warnings: true, ie8: true }`). Options passed to [UglifyJS2](https://github.com/mishoo/UglifyJS2).
+* `uglifyOpts` (Object, default: `{ warnings: true, ie8: true }`). Options passed to [UglifyJS2](https://github.com/mishoo/UglifyJS2#minify-options).
 * `isUglify` (Boolean, default: `true`)
 * `prefix`: (String, default: `null`)
 * `dest`: (String, default: value of `src`)
 * `destExtension`: (RegExp, default: /\.js$/)
 * `bundleExtension`: (String, default: `'.bundle'`)
+
+## Babel Notes
+The file `.babelrc` in the web-app root folder is automatically loaded by the Express Rollup middleware. Furthermore, because **the babel external helper is enabled by default**, the below is imperative in your local web project for now:
+1. `npm install babel-plugin-external-helpers --save-dev`
+1. Include `<script src="babel-polyfill.min.js"></script>` in your web page. 
+1. Include `<script src="babel-helpers.js"></script>` in your web page. 
 
 ## Troubleshooting
 ### Different module file extensions than `.js`
