@@ -20,7 +20,6 @@ const logger = {
 };
 const AVAIL_METHODS = ['GET', 'HEAD'];
 const defaults = {
-  mode: 'compile',
   destExtension: /\.js$/,
   bundleExtension: '.bundle',
   src: null,
@@ -28,10 +27,6 @@ const defaults = {
   root: process.cwd(),
   prefix: null,
   rebuild: 'deps-change', // or 'never' or 'always'
-  serve: false, // or 'on-compile' or true. 'on-compile' has the benefit
-                // that the bundle which is already in memory will be
-                // written directly into the response
-  type: 'javascript',
   rollupOpts: {
     plugins: [babelPlugin({ // .babelrc 自动装载
       externalHelpers: true,
@@ -193,19 +188,6 @@ class ExpressRollup {
             const bundle = await rollup.rollup(rollupOpts);
             await this.processBundle(bundle, bundleOpts, res, next);
           }
-        } else if (this.opts.serve === true) {
-          /** serves js code from cache by ourselves */
-          res.status(200)
-            .type(this.opts.type)
-            .set('Cache-Control', `max-age=${this.opts.maxAge}`)
-            .sendFile(bundleOpts.dest, err => {
-              if (err) {
-                console.error(err);
-                res.status(err.status).end();
-              } else {
-                logger.res('Serving ourselves');
-              }
-            });
         } else {
           logger.res('Serving', 'by next()');
           next('route');
@@ -248,22 +230,11 @@ class ExpressRollup {
       }
       logger.build('Uglify finished');
     }
-    let isSent = false;
-    if (this.opts.serve === true || this.opts.serve === 'on-compile') {
-      isSent = true; // serves js code by ourselves
-      logger.res('Serving ourselves');
-      res.status(200)
-        .type(this.opts.type)
-        .set('Cache-Control', `max-age=${this.opts.maxAge}`)
-        .send(bundled.code);
-    }
     logger.build('Writing out started');
     await this.writeBundle(bundled, bundleOpts);
     logger.build('Writing out', 'finished');
-    if (!isSent) {
-      logger.res('Serving', 'by next()');
-      next('route');
-    }
+    logger.res('Serving', 'by next()');
+    next('route');
     this.cache.get(bundleOpts.dest).resolve(ExpressRollup.getBundleDependencies(bundle));
   }
   async writeBundle({code, map}, {dest, sourceMap}) {
@@ -319,29 +290,16 @@ module.exports = function createExpressRollup(options) {
   return router;
 };
 function buildOpts(options){
-  const opts = _.extendOwn({}, defaults);
-  if (options.mode === 'polyfill' || (!options.mode && defaults.mode === 'polyfill')) {
-    if (options.dest || options.serve || options.bundleExtension) {
-      console.warn('Explicitly setting options of compile mode in polyfill mode');
-    }
-    // some default values will be different if mode === 'polyfill'
-    _.extendOwn(opts, {
-      serve: true,
-      bundleExtension: '.js',
-      dest: options.cache || options.dest || 'cache'
-    });
-  }
-  _.extendOwn(opts, options);
-  // We're not fancy enough to use recursive option merging (yet), so...
-  opts.rollupOpts = _.extendOwn({}, defaults.rollupOpts);
-  _.extendOwn(opts.rollupOpts, options.rollupOpts);
-  opts.bundleOpts = _.extendOwn({}, defaults.bundleOpts);
-  _.extendOwn(opts.bundleOpts, options.bundleOpts);
+    // We're not fancy enough to use recursive option merging (yet), so...
+  _.defaults(options.rollupOpts, defaults.rollupOpts);
+  _.defaults(options.bundleOpts, defaults.bundleOpts);
+  _.defaults(options.uglifyOpts, defaults.uglifyOpts);
+  _.defaults(options, defaults);
   // Source directory (required)
-  console.assert(opts.src, 'rollup middleware requires src directory.');
+  console.assert(options.src, 'rollup middleware requires src directory.');
   // Destination directory (source by default)
-  opts.dest = opts.dest || opts.src;
-  return opts;
+  options.dest = options.dest || options.src;
+  return options;
 }
 function defer(){
   const _defer = {};
