@@ -29,9 +29,8 @@ express-middleware-rollup算是[express-babelify-middleware](https://github.com/
 npm-install is still unavailable. But it's upcoming.
 
 ## Basic Usage
-Assuming a directory setup (from [experess-generator](https://expressjs.com/en/starter/generator.html)) like the following of your project:
+Assuming a project-directory setup (from [experess-generator](https://expressjs.com/en/starter/generator.html)) likes the following:
 ```
-.
 ├── public
 │   └── javascripts
 │       ├── repl.mjs
@@ -58,7 +57,7 @@ app.use('/javascripts', rollupMiddleware({
 app.use(express.static(path.join(__dirname, 'public')));
 app.listen(3000);
 ```
-Now, if you request `localhost:3000/repl-es5.js`, the middleware will automatically bundle `public/javascripts/repl.bjs` using rollup into a file that is ready to be served by `express.static` middleware.
+Now, if you request `localhost:3000/javascripts/repl-es5.js`, the middleware will automatically bundle `public/javascripts/repl.bjs` using rollup into a file that is ready to be served by `express.static` middleware.
 
 ## Options
 Options which are available in both modes are:
