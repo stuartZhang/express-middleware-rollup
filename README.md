@@ -18,7 +18,7 @@ Express middleware for [rollup](http://rollupjs.org/) + [Babel](https://babeljs.
 1. 当入口\*.js文件被从浏览器**第一次**访问时，express-middleware-rollup中间件就会自动地
     1. 关联js背后的所有mjs文件
     1. 利用[Babel](https://babeljs.io/)编译mjs为js文件。
-    1. 以iife格式（可配置改变的），打包js文件
+    1. 以iife格式（可配置改变），打包js文件
     1. 甚至，混淆被打包后的js文件。（可配置关闭）
     1. 最终，将编译+打包+混淆的输出结果保存到硬盘上。
 1. 以后，当该入口js文件再次被从浏览器下载执行时，Express Rollup中间件就会
