@@ -2,7 +2,6 @@ try {
   require('fecha');
 } catch (e) {}
 const _ = require('underscore');
-const debug = require('debug');
 const rollup = require('rollup');
 const fsp = require('fs-promise');
 const url = require('url');
@@ -12,11 +11,13 @@ const UglifyJS = require("uglify-js");
 const babelPlugin = require('rollup-plugin-babel');
 _.defaults(RegExp, {quote: require("regexp-quote")});
 
+const {debug} = require('./utils');
+
 const logger = {
-  check: debug('express-rollup-mw:check'),
-  build: debug('express-rollup-mw:build'),
-  res: debug('express-rollup-mw:res'),
-  rollup: debug('express-rollup-mw:rollup')
+  check: debug('check'),
+  build: debug('build'),
+  res: debug('res'),
+  rollup: debug('rollup')
 };
 const AVAIL_METHODS = ['GET', 'HEAD'];
 const defaults = {
