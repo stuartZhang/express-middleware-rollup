@@ -202,10 +202,20 @@ class ExpressRollup {
     logger.build('Rolling up finished');
     if (this.opts.isUglify) {
       logger.build('Uglify started');
+      const isProd = bundled.map == null;
       const uglifyOpts = _.defaults(bundleOpts.sourceMap ? {
-        sourceMap: {
+        output: {
+          comments: isProd ? false : (topLvl, token) => {
+            return token.value.trim() === 'eslint-disable';
+          }
+        },
+        compress: {
+          drop_console: isProd,
+          drop_debugger: isProd
+        },
+        sourceMap: isProd ? false : {
           content: bundled.map,
-          'filename': path.basename(bundleOpts.dest)
+          filename: path.basename(bundleOpts.dest)
         }
       } : {}, this.opts.uglifyOpts);
       bundled = UglifyJS.minify(bundled.code, uglifyOpts);
