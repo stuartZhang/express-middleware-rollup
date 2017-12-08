@@ -47,12 +47,10 @@
     "fecha": "^2.3.0"
   },
   "devDependencies": {
-    "eslint": "^3.13.0",
-    "eslint-config-airbnb": "^14.0.0",
-    "eslint-plugin-import": "^2.2.0",
-    "eslint-plugin-jsx-a11y": "^3.0.2",
-    "eslint-plugin-node": "^3.0.5",
-    "eslint-plugin-react": "^6.9.0",
+    "babel-eslint": "^8.0.3",
+    "eslint": "^4.12.1",
+    "eslint-config-amo": "file:../eslint-config-amo",
+    "eslint-plugin-amo": "file:../eslint-plugin-amo",
     "mocha": "^3.2.0",
     "supertest": "^2.0.1"
   },

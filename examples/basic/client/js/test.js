@@ -1,3 +1,3 @@
-export default function test() {
-	window.alert('Success!');
+export default function test(){
+  window.alert('Success!'); // eslint-disable-line no-alert
 }

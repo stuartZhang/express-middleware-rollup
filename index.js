@@ -1,37 +1,39 @@
 try {
   require('fecha');
-} catch (e) {}
+} catch (e) {
+  // do nothing
+}
 const _ = require('underscore');
 const rollup = require('rollup');
 const fsp = require('fs-promise');
 const url = require('url');
 const path = require('path');
 const express = require('express');
-const UglifyJS = require("uglify-js");
+const UglifyJS = require('uglify-js');
 const babelPlugin = require('rollup-plugin-babel');
-_.defaults(RegExp, {quote: require("regexp-quote")});
+_.defaults(RegExp, {'quote': require('regexp-quote')});
 
 const {debug} = require('./utils');
 
 const logger = {
-  check: debug('check'),
-  build: debug('build'),
-  res: debug('res'),
-  rollup: debug('rollup')
+  'check': debug('check'),
+  'build': debug('build'),
+  'res': debug('res'),
+  'rollup': debug('rollup')
 };
 const AVAIL_METHODS = ['GET', 'HEAD'];
 const defaults = {
-  destExtension: /\.js$/,
-  bundleExtension: '.bundle',
-  src: null,
-  dest: null,
-  root: process.cwd(),
-  prefix: null,
-  rebuild: 'deps-change', // or 'never' or 'always'
-  rollupOpts: {
-    plugins: [babelPlugin({ // .babelrc 自动装载
-      externalHelpers: true,
-      exclude: 'node_modules/**'
+  'destExtension': /\.js$/,
+  'bundleExtension': '.bundle',
+  'src': null,
+  'dest': null,
+  'root': process.cwd(),
+  'prefix': null,
+  'rebuild': 'deps-change', // or 'never' or 'always'
+  'rollupOpts': {
+    'plugins': [babelPlugin({ // .babelrc 自动装载
+      'externalHelpers': true,
+      'exclude': 'node_modules/**'
     })],
     onwarn(err){
       if (err.code !== 'THIS_IS_UNDEFINED') {
@@ -39,24 +41,24 @@ const defaults = {
       }
     }
   },
-  bundleOpts: {
-    format: 'iife'
+  'bundleOpts': {
+    'format': 'iife'
   },
-  isUglify: true,
-  uglifyOpts: {
-    warnings: true,
-    ie8: true
+  'isUglify': true,
+  'uglifyOpts': {
+    'warnings': true,
+    'ie8': true
   }
 };
-class ExpressRollup {
-  static getBundleDependencies(bundle) {
+class ExpressRollup{
+  static getBundleDependencies(bundle){
     return bundle.modules.map(module => module.id).filter(path.isAbsolute);
   }
   static async errHandleWrapper(func, req, res, next){
     try {
-      await func(req, res, next);
+      return await func(req, res, next);
     } catch (err) {
-      next(err);
+      return next(err);
     }
   }
   static guardHandle(req, res, next){
@@ -64,10 +66,10 @@ class ExpressRollup {
     err.status = 404;
     next(err);
   }
-  static get [Symbol.species]() {
+  static get [Symbol.species](){
     return this;
   }
-  constructor(opts) {
+  constructor(opts){
     this.opts = opts;
     this.cache = new Map(); // Cache for bundles' dependencies list
     this[Symbol.toStringTag] = 'ExpressRollup';
@@ -81,18 +83,18 @@ class ExpressRollup {
       this.cache.set(jsPath, defer());
     }
   }
-  async checkNeedsRebuild(bundleOpts, rollupOpts) {
+  async checkNeedsRebuild(bundleOpts, rollupOpts){
     if (process.env.NODE_ENV === 'production') {
       if (this.cache.has(bundleOpts.dest)) {
         await this.cache.get(bundleOpts.dest).promise;
-        return {needed: false};
+        return {'needed': false};
       }
       this.refreshCache(bundleOpts.dest);
-      return {needed: true};
+      return {'needed': true};
     }
     const [entryExists, jsExists] = await Promise.all([
-      fsp.access(rollupOpts.entry, fsp.F_OK).then(() => true, err => false),
-      fsp.access(bundleOpts.dest, fsp.F_OK).then(() => true, err => false)
+      fsp.access(rollupOpts.entry, fsp.F_OK).then(() => true, () => false),
+      fsp.access(bundleOpts.dest, fsp.F_OK).then(() => true, () => false)
     ]);
     if (!entryExists) {
       return null;
@@ -100,41 +102,42 @@ class ExpressRollup {
     const relDest = path.relative(this.opts.root, bundleOpts.dest);
     logger.check('source: %s', path.relative(this.opts.root, rollupOpts.entry));
     logger.check('dest: %s', relDest);
+    let dependencies, needed;
     if (jsExists && this.cache.has(bundleOpts.dest)) { // both
       logger.check(`[f+, c+] Check the cache item for ${relDest}`);
-      const dependencies = await this.cache.get(bundleOpts.dest).promise;
-      const needed = !(await this.allFilesOlder(bundleOpts.dest, dependencies));
+      dependencies = await this.cache.get(bundleOpts.dest).promise;
+      needed = !await this.allFilesOlder(bundleOpts.dest, dependencies);
       this.refreshCache(bundleOpts.dest, needed);
       return {needed};
     }
     if (!jsExists && !this.cache.has(bundleOpts.dest)) { // neither
       logger.check(`[f-, c-] Create a cache item for ${relDest}`);
       this.refreshCache(bundleOpts.dest);
-      return {needed: true};
+      return {'needed': true};
     }
     if (jsExists && !this.cache.has(bundleOpts.dest)) {
       logger.check(`[f+, c-] Create a cache item for the existing ${relDest}`);
       this.refreshCache(bundleOpts.dest);
       const bundle = await rollup.rollup(rollupOpts);
-      const dependencies = ExpressRollup.getBundleDependencies(bundle);
-      const needed = !(await this.allFilesOlder(bundleOpts.dest, dependencies));
+      dependencies = ExpressRollup.getBundleDependencies(bundle);
+      needed = !await this.allFilesOlder(bundleOpts.dest, dependencies);
       if (needed) { // expired
         return {needed, bundle};
       }
       this.cache.get(bundleOpts.dest).resolve(dependencies);
-      return {needed: false};
+      return {'needed': false};
     }
     if (!jsExists && this.cache.has(bundleOpts.dest)) {
       // js is absent but cache item is here.
       if (this.cache.get(bundleOpts.dest).status === 'pending') {
         logger.check(`[f-, c+] Await the ${relDest} is built by other threads.`);
         await this.cache.get(bundleOpts.dest).promise;
-        return {needed: false};
-      } else {
-        logger.check(`[f-, c+] Invalid cache item, due to losing ${relDest}`);
-        this.refreshCache(bundleOpts.dest);
-        return {needed: true};
+        return {'needed': false};
       }
+      logger.check(`[f-, c+] Invalid cache item, due to losing ${relDest}`);
+      this.refreshCache(bundleOpts.dest);
+      return {'needed': true};
+
     }
     throw new Error('Unknown situation!');
   }
@@ -152,12 +155,12 @@ class ExpressRollup {
           pathname = pathname.substring(this.opts.prefix.length);
         }
         const rollupOpts = _.defaults({
-          entry: path.join(this.opts.root, this.opts.src, pathname
+          'entry': path.join(this.opts.root, this.opts.src, pathname
             .replace(new RegExp(`^${this.opts.dest}`), '')
             .replace(this.opts.destExtension, this.opts.bundleExtension))
         }, this.opts.rollupOpts);
         const bundleOpts = _.defaults({
-          dest: path.join(this.opts.root, this.opts.dest,
+          'dest': path.join(this.opts.root, this.opts.dest,
             pathname.replace(new RegExp(`^${RegExp.quote(this.opts.dest)}`), ''))
         }, this.opts.bundleOpts);
         const rebuild = await this.checkNeedsRebuild(bundleOpts, rollupOpts);
@@ -171,8 +174,9 @@ class ExpressRollup {
         case 'never':
           rebuild.needed = false;
           break;
+        // no default
         }
-        _.extendOwn(res.locals, {rollupOpts, bundleOpts, rebuild})
+        _.extendOwn(res.locals, {rollupOpts, bundleOpts, rebuild});
         return next();
       },
       async (req, res, next) => {
@@ -183,19 +187,17 @@ class ExpressRollup {
           // checkNeedsRebuild may need to inspect the bundle, so re-use the
           // one already available instead of creating a new one
           if (rebuild.bundle) {
-            await this.processBundle(rebuild.bundle, bundleOpts, res, next);
-          } else {
-            const bundle = await rollup.rollup(rollupOpts);
-            await this.processBundle(bundle, bundleOpts, res, next);
+            return await this.processBundle(rebuild.bundle, bundleOpts, res, next);
           }
-        } else {
-          logger.res('Serving', 'by next()');
-          next('route');
+          const bundle = await rollup.rollup(rollupOpts);
+          return await this.processBundle(bundle, bundleOpts, res, next);
         }
+        logger.res('Serving', 'by next()');
+        return next('route');
       }
     ].map(func => _.wrap(func, ExpressRollup.errHandleWrapper));
   }
-  async processBundle(bundle, bundleOpts, res, next) {
+  async processBundle(bundle, bundleOpts, res, next){
     // after loading the bundle, we first want to make sure the dependency
     // cache is up-to-date
     let bundled = bundle.generate(bundleOpts);
@@ -204,18 +206,16 @@ class ExpressRollup {
       logger.build('Uglify started');
       const isProd = bundled.map == null;
       const uglifyOpts = _.defaults(bundleOpts.sourceMap ? {
-        output: {
-          comments: isProd ? false : (topLvl, token) => {
-            return token.value.trim() === 'eslint-disable';
-          }
+        'output': {
+          'comments': isProd ? false : (topLvl, token) => token.value.trim() === 'eslint-disable'
         },
-        compress: {
-          drop_console: isProd,
-          drop_debugger: isProd
+        'compress': {
+          'drop_console': isProd,
+          'drop_debugger': isProd
         },
-        sourceMap: isProd ? false : {
-          content: bundled.map,
-          filename: path.basename(bundleOpts.dest)
+        'sourceMap': isProd ? false : {
+          'content': bundled.map,
+          'filename': path.basename(bundleOpts.dest)
         }
       } : {}, this.opts.uglifyOpts);
       bundled = UglifyJS.minify(bundled.code, uglifyOpts);
@@ -236,7 +236,7 @@ class ExpressRollup {
           toUrl(){
             return `data:application/json;charset=utf-8;base64,${Buffer.from(map, 'utf-8').toString('base64')}`;
           }
-        }
+        };
       }
       logger.build('Uglify finished');
     }
@@ -244,11 +244,11 @@ class ExpressRollup {
     await this.writeBundle(bundled, bundleOpts);
     logger.build('Writing out', 'finished');
     logger.res('Serving', 'by next()');
-    next('route');
     this.cache.get(bundleOpts.dest).resolve(ExpressRollup.getBundleDependencies(bundle));
+    next('route');
   }
-  async writeBundle({code, map}, {dest, sourceMap}) {
-    const stats = await fsp.stat(path.dirname(dest)).catch(err => null);
+  async writeBundle({code, map}, {dest, sourceMap}){
+    const stats = await fsp.stat(path.dirname(dest)).catch(() => null);
     if (stats == null) {
       await fsp.mkdir(path.dirname(dest));
     } else if (!stats.isDirectory()) {
@@ -257,21 +257,20 @@ class ExpressRollup {
     if (map && sourceMap) {
       logger.build(`${sourceMap} sourceMap for ${path.relative(this.opts.root, dest)}`);
       if (sourceMap === 'inline') {
-        code += '\n//# sourceMappingURL=' + map.toUrl();
+        code += `\n//# sourceMappingURL=${map.toUrl()}`;
       } else {
-        code += '\n//# sourceMappingURL=' + path.basename(`${dest}.map`);
+        code += `\n//# sourceMappingURL=${path.basename(`${dest}.map`)}`;
       }
     }
     const promises = [fsp.writeFile(dest, code)];
     if (map && sourceMap === true) {
-      promises.push(fsp.writeFile(`${dest}.map`, map))
+      promises.push(fsp.writeFile(`${dest}.map`, map));
     }
     await Promise.all(promises);
   }
-  allFilesOlder(file, files) {
-    const statsPromises = [file].concat(files)
-      .map(f => fsp.stat(f).then(stat => stat, () => false));
-    return Promise.all(statsPromises).then((stats) => {
+  allFilesOlder(file, files){
+    const statsPromises = [file, ...files].map(f => fsp.stat(f).then(stat => stat, () => false));
+    return Promise.all(statsPromises).then(stats => {
       const fileStat = stats[0];
       console.assert(fileStat, 'File tested for allFilesOlder does not exist?');
       logger.check('Stats loaded', `${stats.length - 1} dependencies`);
@@ -286,12 +285,12 @@ class ExpressRollup {
         }
       }
       return true;
-    }, (err) => {
+    }, err => {
       throw err;
     });
   }
 }
-module.exports = function createExpressRollup(options) {
+module.exports = function createExpressRollup(options){
   const opts = buildOpts(options);
   const router = express.Router();
   const expressRollup = new ExpressRollup(opts);

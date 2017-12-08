@@ -1,41 +1,46 @@
 'use strict';
-
-const fs      = require('fs');
-const path    = require('path');
-const plugin  = require('./rollup-plugin');
+/* eslint-disable no-sync */
+/* global describe before it after */
+const fs = require('fs');
+const path = require('path');
+const plugin = require('./rollup-plugin');
 const express = require('express');
-const rollup  = require('../../../');
-let   request = require('supertest');
+const rollup = require('../../../');
+const request = require('supertest');
 
 const app = express();
 app.use(rollup({
-  src: './',
-  dest: './',
-  root: __dirname,
-  serve: 'on-compile',
+  'src': './',
+  'dest': './',
+  'root': __dirname,
+  'serve': 'on-compile',
   // Because we can't know reliably what express' mime.lookup returns for the default 'javascript'
-  type: 'application/javascript',
-  rollupOpts: {plugins: [plugin]}
+  'type': 'application/javascript',
+  'rollupOpts': {'plugins': [plugin]}
 }));
 
-describe('virtual bundle dependencies', function() {
+describe('virtual bundle dependencies', () => {
   const cachePath = path.join(__dirname, 'module.js');
-  before(function() {
+  before(() => {
     try {
       fs.statSync(cachePath).isFile(); // throws if not existing
       fs.unlinkSync(cachePath);
-    } catch (e) {};
+    } catch (e) {
+      // do nothing
+    }
   });
-  after(function() {
+  after(() => {
     fs.unlinkSync(cachePath);
   });
-  it ('respond with javascript', function(done) {
+  it('respond with javascript', done => {
     request(app).get('/module.js')
     .expect('Content-Type', /javascript/)
     .expect(200)
     .end(err => {
-      if (err) return done(err);
-      request(app).get('/module.js')
+      if (err) {
+        return done(err);
+      }
+      return request(app).get('/module.js')
       .expect(404, done); // we don't have a static middleware installed and `serve` is 'on-compile' only
     });
   });

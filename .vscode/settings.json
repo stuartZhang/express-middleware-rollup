@@ -1,8 +1,10 @@
 {
+  "files.trimTrailingWhitespace": true,
   "editor.snippetSuggestions": "top",
   "editor.tabCompletion": true,
   "editor.tabSize": 2,
   "editor.wordWrap": "on",
   "editor.detectIndentation": false,
-  "eslint.enable": false
+  "eslint.autoFixOnSave": true,
+  "eslint.enable": true
 }
