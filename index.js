@@ -294,7 +294,7 @@ module.exports = function createExpressRollup(options){
   const opts = buildOpts(options);
   const router = express.Router();
   const expressRollup = new ExpressRollup(opts);
-  router.get(`*${opts.bundleExtension}`, ExpressRollup.guardHandle)
+  router.all(`*${opts.bundleExtension}`, ExpressRollup.guardHandle)
         .get(opts.destExtension, ...expressRollup.handles());
   return router;
 };
