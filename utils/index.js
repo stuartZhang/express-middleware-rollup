@@ -1,7 +1,7 @@
 const cluster = require('cluster');
 const debug = require('debug');
 const _ = require('underscore');
-const pckg = require('./package.json');
+const pckg = require('../package.json');
 
 _.extendOwn(exports, {
   debug(category){
