@@ -1,5 +1,5 @@
 // System dependencies
-const _ = require('underscore');
+
 // App dependencies
 const {debug} = require('./index');
 // Variable
@@ -44,13 +44,13 @@ module.exports = function sweetjsRuntime(){
     } else {
       macroIndex = 1;
     }
-    logger.debug(' >>> Replacer: from %s\n to %s\n', match, result);
+    log(' >>> Replacer: from %s\n to %s\n', match, result);
     // console.log(result);
     return result;
   }
+  const log = debug('sweetjs');
   let macroIndex = 1;
   return function sweetCompile(code, dest, filename){
-    const log = debug('sweetjs');
     log(`Sweetjs compiling ${filename}: ${Math.round(code.length / 1000)}KB`);
     const compiled = code.replace(macroRegExp, replacer);
     return {
