@@ -10,7 +10,7 @@ const sweetjsRuntime = require('./utils/sweetjs');
 module.exports = function(options){
   const optKeys = ['extName', 'indexFile'];
   const opts = _.defaults(_.pick(options, optKeys), {
-    'extName': '.js',
+    'extName': '.mjs',
     'indexFile': 'index'
   });
   options = _.omit(options, optKeys);
@@ -32,13 +32,13 @@ module.exports = function(options){
       try {
         await fsp.access(dirname, fsp.R_OK);
         const fStats = await fsp.stat(dirname);
-        if (fStats.isDirectory()) { // eslint-disable-line no-sync
-          filename = path.join(dirname, opts.indexFile + opts.extName);
+        if (fStats.isDirectory()) {
+          filename = path.join(dirname, `${opts.indexFile}${opts.extName}`);
         } else {
           filename = dirname;
         }
       } catch (err) {
-        filename = dirname + opts.extName;
+        filename = `${dirname}${opts.extName}`;
       }
       const log = debug('babel-plugin:resolveId');
       log('resolveId from', importee, 'to', filename);
