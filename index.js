@@ -295,11 +295,11 @@ module.exports = function createExpressRollup(options){
   const router = express.Router();
   const expressRollup = new ExpressRollup(opts);
   router.all(`*${opts.bundleExtension}`, ExpressRollup.guardHandle)
-        .get(opts.destExtension, ...expressRollup.handles());
+    .get(opts.destExtension, ...expressRollup.handles());
   return router;
 };
 function buildOpts(options){
-    // We're not fancy enough to use recursive option merging (yet), so...
+  // We're not fancy enough to use recursive option merging (yet), so...
   _.defaults(options.rollupOpts, defaults.rollupOpts);
   _.defaults(options.bundleOpts, defaults.bundleOpts);
   _.defaults(options.uglifyOpts, defaults.uglifyOpts);
