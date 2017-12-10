@@ -6,5 +6,6 @@
   "editor.wordWrap": "on",
   "editor.detectIndentation": false,
   "eslint.autoFixOnSave": true,
-  "eslint.enable": true
+  "eslint.enable": true,
+  "prettier.eslintIntegration": true
 }
