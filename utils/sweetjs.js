@@ -1,10 +1,19 @@
 // System dependencies
 const _ = require('underscore');
 // App dependencies
-
+const {debug} = require('./index');
 // Variable
-module.exports = function sweetjsRuntime(logger){
-
+const macroRegExp = /^(\s*)MACRO_(TIME(?:_END)?|LOG_(DEBUG|INFO|WARN|ERROR))(?:\s+\[(\w+)\])?\s+(.+)\s*$/mg;
+const template1 = 'var __logDVal@INDEX@__ = __simpleLogFormat__.@LOGLEV@.@LOGCAT@(@LOGPARAMS@);' +
+                  "if (__logDVal@INDEX@__ != '')" +
+                    'console.@LOGLEVEL@.apply(console, __logDVal@INDEX@__);';
+const template2 = 'var __logDVal@INDEX@__ = __simpleLogFormat__.@LOGLEV@(@LOGPARAMS@);' +
+                  "if (__logDVal@INDEX@__ != '')" +
+                    'console.@LOGLEVEL@.apply(console, __logDVal@INDEX@__);';
+const template3 = 'var __logDVal@INDEX@__ = __simpleLogFormat__.@LOGLEV@.@LOGCAT@(@LOGPARAMS@);' +
+                  "if (__logDVal@INDEX@__ != '')" +
+                    'console.@LOGLEVEL@(__logDVal@INDEX@__[0].replace(/^%c\\[DEBUG\\]/, "[AUDIT]"));';
+module.exports = function sweetjsRuntime(){
   function replacer(match, ws, command, logLevel, logCat, logParams){ // , offset, source
     logParams = logParams.replace(/;$/, '');
     let result;
@@ -39,25 +48,10 @@ module.exports = function sweetjsRuntime(logger){
     // console.log(result);
     return result;
   }
-
-  logger = logger || {
-    'writeln': _.noop,
-    'debug': _.noop
-  };
-  const macroRegExp = /^(\s*)MACRO_(TIME(?:_END)?|LOG_(DEBUG|INFO|WARN|ERROR))(?:\s+\[(\w+)\])?\s+(.+)\s*$/mg;
-  const template1 = 'var __logDVal@INDEX@__ = __simpleLogFormat__.@LOGLEV@.@LOGCAT@(@LOGPARAMS@);' +
-                  "if (__logDVal@INDEX@__ != '')" +
-                    'console.@LOGLEVEL@.apply(console, __logDVal@INDEX@__);';
-  const template2 = 'var __logDVal@INDEX@__ = __simpleLogFormat__.@LOGLEV@(@LOGPARAMS@);' +
-                  "if (__logDVal@INDEX@__ != '')" +
-                    'console.@LOGLEVEL@.apply(console, __logDVal@INDEX@__);';
-  const template3 = 'var __logDVal@INDEX@__ = __simpleLogFormat__.@LOGLEV@.@LOGCAT@(@LOGPARAMS@);' +
-                  "if (__logDVal@INDEX@__ != '')" +
-                    'console.@LOGLEVEL@(__logDVal@INDEX@__[0].replace(/^%c\\[DEBUG\\]/, "[AUDIT]"));';
   let macroIndex = 1;
-
   return function sweetCompile(code, dest, filename){
-    logger.writeln(`Sweetjs compiling ${filename}: ${Math.round(code.length / 1000)}KB`);
+    const log = debug('sweetjs');
+    log(`Sweetjs compiling ${filename}: ${Math.round(code.length / 1000)}KB`);
     const compiled = code.replace(macroRegExp, replacer);
     return {
       'code': compiled,
