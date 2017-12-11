@@ -19,7 +19,7 @@ module.exports = function sweetjsRuntime(){
     let result;
     if (command.match(/^LOG_/)) {
       logLevel = logLevel.toLowerCase();
-      const logLev = logLevel.at(0);
+      const logLev = logLevel.charAt(0);
       if (logCat == null) { // template 2
         result = ws + template2;
       } else { // template 1

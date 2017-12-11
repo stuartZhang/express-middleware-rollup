@@ -25,6 +25,10 @@ module.exports = {
     'amo/eslint-config-stylistic.js',
     'amo/eslint-config-var.js'
   ],
+  'plugins': ['amo'],
+  'rules': {
+    'amo/no-string-charcode': 'off'
+  },
   'parser': 'babel-eslint',
   'root': true
 };
