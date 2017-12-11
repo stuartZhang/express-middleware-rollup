@@ -159,7 +159,9 @@ class ExpressRollup{
             .replace(new RegExp(`^${this.opts.dest}`), '')
             .replace(this.opts.destExtension, this.opts.bundleExtension))
         }, this.opts.rollupOpts);
+        const {banner} = this.opts.bundleOpts;
         const bundleOpts = _.defaults({
+          'banner': _.isFunction(banner) ? banner(rollupOpts.entry) : undefined,
           'dest': path.join(this.opts.root, this.opts.dest,
             pathname.replace(new RegExp(`^${RegExp.quote(this.opts.dest)}`), ''))
         }, this.opts.bundleOpts);
