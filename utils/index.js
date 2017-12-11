@@ -3,6 +3,12 @@ const debug = require('debug');
 const _ = require('underscore');
 const pckg = require('../package.json');
 
+_.defaults(String.prototype, {
+  at(position){
+    return String.fromCodePoint(this.codePointAt(position));
+  }
+});
+
 _.extendOwn(exports, {
   debug(category){
     if (cluster.isWorker) {
