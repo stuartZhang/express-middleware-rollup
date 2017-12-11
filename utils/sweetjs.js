@@ -25,13 +25,13 @@ module.exports = function sweetjsRuntime(){
       } else { // template 1
         result = ws + template1.replace(/@LOGCAT@/g, logCat);
       }
-      result = result.replace(/@LOGLEVEL@/g, logLevel)
+      result = result.replace(/@LOGLEVEL@/g, logLevel === 'debug' ? 'log' : logLevel)
         .replace(/@LOGLEV@/g, logLev);
     } else if (command.match(/^TIME(?:_END)?$/)) {
       command = command.toLowerCase().replace(/_(\w)/mg, (match, capital) => capital.toUpperCase());
       result = ws + template3;
       result = result.replace(/@LOGCAT@/g, logCat)
-        .replace(/@LOGLEVEL@/g, command)
+        .replace(/@LOGLEVEL@/g, command === 'debug' ? 'log' : command)
         .replace(/@LOGLEV@/g, 'd');
     }
     if (result == null) {
